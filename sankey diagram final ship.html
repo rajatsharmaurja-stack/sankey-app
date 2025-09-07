@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Delivery Sankey Flow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .container { max-width: 98vw; margin: auto; padding: 1rem; }
+        
+        .project-wrapper { display: flex; align-items: stretch; gap: 0.5rem; }
+        .factory-container { display: flex; align-items: center; justify-content: flex-start; width: 40%; }
+        .project-container {
+            padding: 0.1rem 0.4rem; border-radius: 0.5rem; background-color: #f1f5f9;
+            border-width: 2px; width: 60%;
+        }
+        .batch-box {
+            padding: 0.1rem; margin-top: 0.2rem; border-radius: 0.25rem; 
+            background-color: white; border: 1px solid #e2e8f0;
+        }
+        .subproject-box {
+            padding: 0.2rem; border-radius: 0.5rem; background-color: white;
+            box-shadow: 0 2px 4px -1px rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        }
+        .node-text { font-size: 0.65rem; }
+        .node-header { font-size: 0.75rem; }
+
+        .sankey-flow { transition: opacity 0.3s ease; cursor: pointer; }
+        .sankey-flow.blurred { opacity: 0.05; }
+        
+        .modal-backdrop {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5); z-index: 50;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background-color: white; padding: 2rem; border-radius: 0.5rem;
+            width: 90%; max-width: 500px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+        }
+        .hidden { display: none; }
+        
+        .factory-icon { color: #4b5563; }
+        @keyframes smoke-puff-anim {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-30px) scale(2.5); opacity: 0; }
+        }
+        .smoke-puff { animation: smoke-puff-anim 2s linear infinite; transform-origin: center; }
+        @keyframes gear-rotate { to { transform: rotate(360deg); } }
+        .gear { animation: gear-rotate 2s linear infinite; transform-origin: center; }
+        @keyframes box-move {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(20px); }
+        }
+        .box { animation: box-move 4s linear infinite alternate; }
+
+        .ship-group .ship-icon { font-size: 1rem; }
+        .ship-group .ship-eta { font-size: 0.55rem; font-weight: bold; }
+        .ship-group.delayed .ship-icon { color: #dc2626; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container">
+        <div class="text-center mb-6">
+            <h1 class="text-2xl font-bold text-gray-900">Project to Site Delivery Sankey Flow</h1>
+            <p class="text-md text-gray-600 mt-1">Click any flow line to highlight it. Click the background to reset.</p>
+        </div>
+
+        <div class="flex justify-center flex-wrap gap-4 mb-6 items-center">
+            <div class="bg-white p-4 rounded-lg shadow-md border border-gray-200">
+                <label for="file-upload" class="cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
+                    <i class="fas fa-file-excel mr-2"></i> Upload Delivery Summary
+                </label>
+                <input id="file-upload" type="file" class="hidden" accept=".xlsx, .xls">
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-md border border-gray-200">
+                <label for="project-filter" class="block text-xs font-medium text-gray-700 mb-1">Project Name</label>
+                <select id="project-filter" class="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md">
+                    <option value="All">All Projects</option>
+                </select>
+            </div>
+             <div class="bg-white p-4 rounded-lg shadow-md border border-gray-200">
+                <label for="power-filter" class="block text-xs font-medium text-gray-700 mb-1">Power Class</label>
+                <select id="power-filter" class="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md">
+                    <option value="All">All Power Classes</option>
+                </select>
+            </div>
+             <div class="bg-white p-4 rounded-lg shadow-md border border-gray-200">
+                <label for="status-filter" class="block text-xs font-medium text-gray-700 mb-1">Delivery Status</label>
+                <select id="status-filter" class="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md">
+                    <option value="All">All Statuses</option>
+                </select>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-md border border-gray-200">
+                <label for="eta-filter" class="block text-xs font-medium text-gray-700 mb-1">Show Ship Animation</label>
+                <select id="eta-filter" class="block w-full pl-3 pr-10 py-2 text-sm border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md">
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                </select>
+            </div>
+            <div class="p-4">
+                 <button id="reset-filters" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50">
+                    <i class="fas fa-undo mr-2"></i> Reset All Filters
+                </button>
+            </div>
+        </div>
+
+        <div id="message-area" class="mb-6"></div>
+        
+        <div id="visualization-container" class="w-full min-h-[800px] bg-white rounded-lg shadow-md border border-gray-200 p-4 relative">
+             <svg id="factory-paths-container" class="absolute top-0 left-0 w-full h-full z-0"></svg>
+             <svg id="paths-container" class="absolute top-0 left-0 w-full h-full z-10"></svg>
+             <div id="flow-container" class="flex justify-between items-start">
+                <div id="source-column" class="w-[45%] space-y-4"></div>
+                <div id="subproject-column" class="w-[25%] space-y-4"></div>
+             </div>
+             <p id="placeholder-text" class="text-center text-gray-500 mt-16">Please upload the 'Project Wise Split' file to begin.</p>
+        </div>
+    </div>
+    
+    <div id="flow-modal" class="modal-backdrop hidden">
+        <div class="modal-content">
+            <h2 class="text-xl font-bold border-b pb-2 mb-4">Delivery Details</h2>
+            <div id="modal-body" class="space-y-3"></div>
+            <button id="modal-close" class="mt-6 w-full px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Close</button>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        let masterData = [];
+        let activeAnimations = [];
+
+        const showMessage = (type, title, message) => {
+            const colors = { error: 'red', warning: 'yellow', success: 'green' };
+            document.getElementById('message-area').innerHTML = `<div class="border rounded p-4 bg-${colors[type]}-100 border-${colors[type]}-400 text-${colors[type]}-700" role="alert"><strong class="font-bold">${title}</strong> ${message}</div>`;
+        };
+        
+        const clearAll = () => {
+            clearVisualization();
+            document.getElementById('placeholder-text').style.display = 'block';
+            document.getElementById('message-area').innerHTML = '';
+             resetFilters(false); 
+            ['project-filter', 'power-filter', 'status-filter', 'eta-filter'].forEach(id => {
+                 const filter = document.getElementById(id);
+                 const firstOption = filter.options[0];
+                 if(id === 'eta-filter') {
+                     filter.value = 'yes';
+                     return;
+                 }
+                 filter.innerHTML = '';
+                 filter.appendChild(firstOption);
+            });
+            masterData = [];
+        };
+        
+        const resetFilters = (render = true) => {
+            ['project-filter', 'power-filter', 'status-filter'].forEach(id => {
+                document.getElementById(id).value = 'All';
+            });
+            document.getElementById('eta-filter').value = 'yes';
+            if(render && masterData.length > 0) renderFilteredData();
+        };
+
+        document.getElementById('file-upload').addEventListener('change', e => {
+            clearAll();
+            handleFileUpload(e.target.files[0], 'Project Wise Split', processData);
+        });
+
+        ['project-filter', 'power-filter', 'status-filter', 'eta-filter'].forEach(id => {
+            document.getElementById(id).addEventListener('change', () => {
+                 if (masterData.length > 0) renderFilteredData();
+            });
+        });
+        
+        document.getElementById('reset-filters').addEventListener('click', () => resetFilters());
+
+        document.getElementById('visualization-container').addEventListener('click', (e) => {
+            if (e.target.closest('.project-container') === null && e.target.closest('.subproject-box') === null) {
+                 document.querySelectorAll('.sankey-flow').forEach(p => p.classList.remove('blurred'));
+            }
+        });
+        
+        const modal = document.getElementById('flow-modal');
+        document.getElementById('modal-close').addEventListener('click', () => modal.classList.add('hidden'));
+        modal.addEventListener('click', (e) => { if(e.target === modal) modal.classList.add('hidden'); });
+
+        function handleFileUpload(file, sheetName, callback) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                    const foundSheet = workbook.SheetNames.find(name => name.toLowerCase().trim() === sheetName.toLowerCase().trim());
+                    if (!foundSheet) throw new Error(`Sheet "${sheetName}" not found.`);
+                    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[foundSheet], { header: 1, defval: "" });
+                    callback(rows);
+                } catch (error) { showMessage('error', 'File Error', error.message); }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        
+        function processData(rows) {
+            let headerRowIndex = rows.findIndex(row => row.some(cell => String(cell).toLowerCase().includes("project name")));
+            if(headerRowIndex === -1) {
+                 showMessage('error', 'Header Not Found', 'Could not find the header row in "Project Wise Split".');
+                 return;
+            }
+            
+            const headers = rows[headerRowIndex].map(h => String(h).trim());
+            const dataRows = rows.slice(headerRowIndex + 1);
+            
+            masterData = dataRows.map(row => {
+                const rowData = {};
+                headers.forEach((header, index) => { if (header) rowData[header] = row[index]; });
+                
+                const excelDate = rowData['Updated ETA'];
+                const etaDate = excelDate ? new Date(Math.round((excelDate - 25569) * 86400 * 1000)) : null;
+                const delayValue = parseInt(String(rowData['Delays'] || '0').trim()) || 0;
+
+                return {
+                    project: String(rowData['Project Name'] || '').trim(),
+                    subProject: String(rowData['Sub Project Name'] || '').trim(),
+                    batch: String(rowData['Delivery Batch'] || '').trim(),
+                    power: String(rowData['Power Class'] || '').trim(),
+                    status: String(rowData['Delivery Status'] || 'N/A').trim(),
+                    qty: parseInt(String(rowData['Qty.'] || '0').replace(/,/g, ''), 10) || 0,
+                    hasDelay: delayValue > 0, 
+                    delay: delayValue,
+                    eta: etaDate,
+                };
+            })
+            .filter(r => r.project && r.batch && r.power && r.qty > 0);
+
+            if (masterData.length === 0) {
+                 showMessage('warning', 'No Processable Data', 'No valid, planned data rows could be processed.');
+                 return;
+            }
+
+            document.getElementById('placeholder-text').style.display = 'none';
+            populateFilters();
+            renderFilteredData();
+        }
+
+        function populateFilters() {
+            const projectFilter = document.getElementById('project-filter');
+            const powerFilter = document.getElementById('power-filter');
+            const statusFilter = document.getElementById('status-filter');
+
+            const projects = [...new Set(masterData.map(r => r.project))].sort();
+            const powers = [...new Set(masterData.map(r => r.power))].sort((a,b) => parseInt(a) - parseInt(b));
+            const statuses = [...new Set(masterData.map(r => r.status))].sort();
+
+            projects.forEach(p => projectFilter.add(new Option(p, p)));
+            powers.forEach(p => powerFilter.add(new Option(`${p}W`, p)));
+            statuses.forEach(s => statusFilter.add(new Option(s, s)));
+        }
+
+        function renderFilteredData() {
+            const selectedProject = document.getElementById('project-filter').value;
+            const selectedPower = document.getElementById('power-filter').value;
+            const selectedStatus = document.getElementById('status-filter').value;
+            
+            let data = masterData;
+            if (selectedProject !== 'All') data = data.filter(r => r.project === selectedProject);
+            if (selectedPower !== 'All') data = data.filter(r => r.power === selectedPower);
+            if (selectedStatus !== 'All') data = data.filter(r => r.status === selectedStatus);
+
+            if (data.length === 0) {
+                showMessage('warning', 'No Data', 'No data found for the selected filters.');
+                clearVisualization(); return;
+            } else {
+                 document.getElementById('message-area').innerHTML = '';
+            }
+
+            const projectsUI = new Map();
+            const subProjectsUI = new Map();
+
+            const batchTotals = new Map();
+            data.forEach(r => {
+                const key = `${r.project}|${r.batch}|${r.power}`;
+                batchTotals.set(key, (batchTotals.get(key) || 0) + r.qty);
+            });
+
+            const batchDelivered = new Map();
+            data.forEach(r => {
+                if (r.subProject) {
+                    const key = `${r.project}|${r.batch}|${r.power}`;
+                    batchDelivered.set(key, (batchDelivered.get(key) || 0) + r.qty);
+                }
+            });
+
+            data.forEach(r => {
+                if (!projectsUI.has(r.project)) projectsUI.set(r.project, new Map());
+                const batches = projectsUI.get(r.project);
+                if (!batches.has(r.batch)) batches.set(r.batch, new Map());
+                const powers = batches.get(r.batch);
+                
+                const key = `${r.project}|${r.batch}|${r.power}`;
+                if (!powers.has(r.power)) {
+                    const total = batchTotals.get(key) || 0;
+                    const delivered = batchDelivered.get(key) || 0;
+                    powers.set(r.power, { total, remaining: total - delivered });
+                }
+
+                if (r.subProject) {
+                    if (!subProjectsUI.has(r.subProject)) subProjectsUI.set(r.subProject, { deliveries: new Map(), hasDelay: false, total: 0 });
+                    const sub = subProjectsUI.get(r.subProject);
+                    if(!sub.deliveries.has(r.power)) sub.deliveries.set(r.power, 0);
+                    sub.deliveries.set(r.power, sub.deliveries.get(r.power) + r.qty);
+                    sub.total += r.qty;
+                    if (r.hasDelay) sub.hasDelay = true;
+                }
+            });
+            
+            renderUI(projectsUI, subProjectsUI);
+            requestAnimationFrame(() => {
+                drawBatchToSubprojectFlows(data);
+                const showShips = document.getElementById('eta-filter').value;
+                if (showShips === 'yes') {
+                    drawFactoryAnimations(data);
+                }
+            });
+        }
+        
+        function renderUI(projects, subProjects) {
+            clearVisualization();
+            const sourceCol = document.getElementById('source-column');
+            const subCol = document.getElementById('subproject-column');
+            
+            const colors = ['#2563eb', '#ca8a04', '#16a34a', '#dc2626', '#0891b2', '#9333ea', '#db2777'];
+            let colorIndex = 0;
+            const projectColors = new Map([...projects.keys()].map(p => [p, colors[colorIndex++ % colors.length]]));
+            
+            projects.forEach((batches, project) => {
+                const color = projectColors.get(project);
+                let batchesHtml = '';
+                batches.forEach((powers, batch) => {
+                    let powerHtml = '';
+                    const batchId = `batch-${project.replace(/[^a-zA-Z0-9]/g, '-')}-${batch.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                    powers.forEach((data, power) => {
+                        powerHtml += `<div id="power-${project.replace(/[^a-zA-Z0-9]/g, '-')}-${batch.replace(/[^a-zA-Z0-9]/g, '-')}-${power}" class="node-text py-0.5 px-2">
+                                        <span class="font-semibold">${power}W:</span> ${data.total.toLocaleString()} pcs
+                                        (<span class="font-bold text-green-700">${data.remaining.toLocaleString()} left</span>)
+                                      </div>`;
+                    });
+                    batchesHtml += `<div id="${batchId}" class="batch-box"><h4 class="node-header font-bold border-b pb-1 mb-1 px-2">Batch ${batch}</h4>${powerHtml}</div>`;
+                });
+                const factoryId = `factory-${project.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                const factoryIcon = `
+                    <svg class="factory-icon" width="60" height="60" viewBox="0 0 120 120">
+                        <path d="M95 80 L95 40 L105 40 L105 80 Z" fill="#6b7280"/>
+                        <path d="M97 35 L103 35 L100 25 Z" fill="#6b7280"/>
+                        <circle class="smoke-puff" cx="100" cy="20" r="4" fill="#a1a1aa"/>
+                        <circle class="smoke-puff" style="animation-delay: 0.5s" cx="100" cy="20" r="5" fill="#a1a1aa"/>
+                        <circle class="smoke-puff" style="animation-delay: 1s" cx="100" cy="20" r="3" fill="#a1a1aa"/>
+                        <path d="M10 80 L10 30 L60 10 L110 30 L110 80 Z" fill="#9ca3af"/>
+                        <path d="M10 80 L110 80" stroke="#4b5563" stroke-width="3"/>
+                        <rect x="15" y="65" width="40" height="5" fill="#4b5563"/>
+                        <circle cx="20" cy="73" r="3" fill="#374151" class="gear"/>
+                        <circle cx="50" cy="73" r="3" fill="#374151" class="gear"/>
+                        <rect x="25" y="62" width="5" height="5" fill="#facc15" class="box"/>
+                    </svg>`;
+                sourceCol.innerHTML += `
+                    <div class="project-wrapper">
+                        <div id="${factoryId}" class="factory-container">${factoryIcon}</div>
+                        <div class="project-container" style="border-color: ${color};">
+                            <h3 class="node-header font-bold text-md mb-2" style="color: ${color};">${project}</h3>
+                            ${batchesHtml}
+                        </div>
+                    </div>`;
+            });
+            
+            subProjects.forEach((data, sub) => {
+                let deliveryHtml = '';
+                data.deliveries.forEach((qty, power) => deliveryHtml += `<div class="node-text"><span class="font-semibold">${power}W:</span> ${qty.toLocaleString()} pcs</div>`);
+                const delayFlag = data.hasDelay ? '<i class="fas fa-flag text-red-500 ml-2" title="Delays reported"></i>' : '';
+                subCol.innerHTML += `<div id="sub-${sub.replace(/[^a-zA-Z0-9]/g, '-')}" class="subproject-box"><h3 class="node-header font-bold text-gray-800">${sub}${delayFlag}</h3><p class="node-text">${data.total.toLocaleString()} pcs total</p><div class="text-sm space-y-1 mt-1">${deliveryHtml}</div></div>`;
+            });
+            
+            drawBatchToSubprojectFlows.projectColors = projectColors;
+        }
+
+        function drawFactoryAnimations(data) {
+            const svg = document.getElementById('factory-paths-container');
+            const batchShipData = new Map();
+
+            data.forEach(r => {
+                const key = `${r.project}|${r.batch}`;
+                if (!batchShipData.has(key)) {
+                    batchShipData.set(key, { etas: [], hasAnyDelay: false });
+                }
+                if(r.eta) batchShipData.get(key).etas.push(r.eta);
+                if(r.delay > 0) batchShipData.get(key).hasAnyDelay = true;
+            });
+
+            batchShipData.forEach((d, key) => {
+                const [project, batch] = key.split('|');
+                const hasDelay = d.hasAnyDelay;
+                const earliestEta = d.etas.length > 0 ? new Date(Math.min.apply(null, d.etas)) : null;
+
+                const fromEl = document.getElementById(`factory-${project.replace(/[^a-zA-Z0-9]/g, '-')}`);
+                const toEl = document.getElementById(`batch-${project.replace(/[^a-zA-Z0-9]/g, '-')}-${batch.replace(/[^a-zA-Z0-9]/g, '-')}`);
+
+                if (fromEl && toEl) {
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', getFactoryPath(fromEl, toEl));
+                    path.setAttribute('stroke', '#cbd5e1');
+                    path.setAttribute('stroke-width', 1);
+                    path.setAttribute('fill', 'none');
+                    svg.appendChild(path);
+
+                    const shipGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                    shipGroup.classList.add('ship-group');
+                    if (hasDelay) shipGroup.classList.add('delayed');
+                    
+                    const shipIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    shipIcon.classList.add('ship-icon');
+                    shipIcon.setAttribute('x', -8);
+                    shipIcon.setAttribute('y', 5);
+                    shipIcon.textContent = '🚢';
+                    shipGroup.appendChild(shipIcon);
+
+                    if (earliestEta) {
+                        const etaText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                        etaText.classList.add('ship-eta');
+                        etaText.setAttribute('x', -12);
+                        etaText.setAttribute('y', -8);
+                        etaText.textContent = `ETA: ${earliestEta.toLocaleDateString()}`;
+                        shipGroup.appendChild(etaText);
+                    }
+                    svg.appendChild(shipGroup);
+                    animateShip(shipGroup, path);
+                }
+            });
+        }
+
+        function animateShip(shipGroup, path) {
+            let startTime = null;
+            const duration = 15000 + Math.random() * 5000;
+            const pathLength = path.getTotalLength();
+            let animationFrameId;
+
+            function anim(timestamp) {
+                if (!startTime) startTime = timestamp;
+                const elapsed = timestamp - startTime;
+                const progress = elapsed / duration;
+                
+                const distance = (progress % 1) * pathLength;
+                const point = path.getPointAtLength(distance);
+                
+                shipGroup.setAttribute('transform', `translate(${point.x}, ${point.y})`);
+
+                animationFrameId = requestAnimationFrame(anim);
+            }
+            animationFrameId = requestAnimationFrame(anim);
+            activeAnimations.push(animationFrameId);
+        }
+
+        function drawBatchToSubprojectFlows(data) {
+            const svg = document.getElementById('paths-container');
+            const maxQty = Math.max(...data.map(f => f.qty), 1);
+            const sankeyFlows = new Map();
+
+            data.forEach(row => {
+                 if (row.subProject) {
+                    const sankeyKey = `${row.project}|${row.batch}|${row.power}->${row.subProject}`;
+                    sankeyFlows.set(sankeyKey, (sankeyFlows.get(sankeyKey) || 0) + row.qty);
+                 }
+            });
+
+            sankeyFlows.forEach((qty, key) => {
+                const [sourceKey, subProject] = key.split('->');
+                const [project, batch, power] = sourceKey.split('|');
+                
+                const fromEl = document.getElementById(`power-${project.replace(/[^a-zA-Z0-9]/g, '-')}-${batch.replace(/[^a-zA-Z0-9]/g, '-')}-${power}`);
+                const toEl = document.getElementById(`sub-${subProject.replace(/[^a-zA-Z0-9]/g, '-')}`);
+                
+                if (fromEl && toEl) {
+                    const width = Math.max(1.5, (qty / maxQty) * 25);
+                    const details = { project, batch, subProject, power, qty };
+                    const color = drawBatchToSubprojectFlows.projectColors.get(project) || '#cbd5e1';
+                    drawSankey(svg, getSankeyPath(fromEl, toEl), color, width, details);
+                }
+            });
+        }
+
+        const getFactoryPath = (startEl, endEl) => {
+            const r1 = startEl.getBoundingClientRect(), r2 = endEl.getBoundingClientRect(), rC = document.getElementById('visualization-container').getBoundingClientRect();
+            const sX = r1.left + r1.width / 2 - rC.left, sY = r1.top + r1.height / 2 - rC.top;
+            const eX = r2.left - rC.left, eY = r2.top + r2.height / 2 - rC.top;
+            const curve = 30;
+            return `M ${sX} ${sY} C ${sX + curve} ${sY}, ${eX - curve} ${eY}, ${eX} ${eY}`;
+        };
+
+        const getSankeyPath = (startEl, endEl) => {
+            const r1 = startEl.getBoundingClientRect(), r2 = endEl.getBoundingClientRect(), rC = document.getElementById('visualization-container').getBoundingClientRect();
+            const sX = r1.right - rC.left, sY = r1.top + r1.height / 2 - rC.top;
+            const eX = r2.left - rC.left, eY = r2.top + r2.height / 2 - rC.top;
+            const curve = 60;
+            return `M ${sX} ${sY} C ${sX + curve} ${sY}, ${eX - curve} ${eY}, ${eX} ${eY}`;
+        };
+        
+        const drawSankey = (svg, d, color, width, details) => {
+            const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            p.setAttribute('d', d); p.setAttribute('stroke', color); p.setAttribute('stroke-width', width);
+            p.setAttribute('stroke-opacity', 0.6);
+            p.setAttribute('fill', 'none');
+            p.classList.add('sankey-flow');
+            
+            const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            t.textContent = `From Project ${details.project}, Batch ${details.batch} (${details.power}W) to ${details.subProject}:\n${details.qty.toLocaleString()} pcs`;
+            p.appendChild(t);
+            
+            p.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.sankey-flow').forEach(path => path.classList.add('blurred'));
+                p.classList.remove('blurred');
+                showModal(details);
+            });
+            svg.appendChild(p);
+        };
+        
+        function showModal(details) {
+            const modalBody = document.getElementById('modal-body');
+            modalBody.innerHTML = `
+                <p><strong><i class="fas fa-building mr-2"></i>From Project:</strong> ${details.project}</p>
+                <p><strong><i class="fas fa-box-open mr-2"></i>Via Batch:</strong> ${details.batch}</p>
+                <p><strong><i class="fas fa-map-marker-alt mr-2"></i>To Site:</strong> ${details.subProject}</p>
+                <hr class="my-3">
+                <p class="text-lg"><strong><i class="fas fa-pallet mr-2"></i>Delivered:</strong> ${details.qty.toLocaleString()} pcs of ${details.power}W</p>
+            `;
+            modal.classList.remove('hidden');
+        }
+        
+        function clearVisualization() {
+            activeAnimations.forEach(id => cancelAnimationFrame(id));
+            activeAnimations = [];
+            ['source-column', 'subproject-column', 'paths-container', 'factory-paths-container'].forEach(id => document.getElementById(id).innerHTML = '');
+        }
+
+    </script>
+</body>
+</html>
+
